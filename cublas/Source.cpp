@@ -17,7 +17,7 @@ void verifySolution(float* A, float* B, float* C, int N) {
 }
 
 int main() {
-	int N = 1 << 10;
+	int N = 1 << 2;
 	int bytes = N * N * sizeof(float);
 	float* A, * B, * C;
 	float* d_A, * d_B, * d_C;
@@ -35,8 +35,10 @@ int main() {
 	curandGenerator_t gen;
 	curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
 	curandSetPseudoRandomGeneratorSeed(gen, duration_cast<nanoseconds>(high_resolution_clock::now().time_since_epoch()).count());
-	curandGenerateUniform(gen, d_A, N * N);
-	curandGenerateUniform(gen, d_B, N * N);
+	curandGenerateNormal(gen, d_A, N * N, 0, 1);
+	curandGenerateNormal(gen, d_B, N * N, 0, 1);
+	/*curandGenerateUniform(gen, d_A, N * N);
+	curandGenerateUniform(gen, d_B, N * N);*/
 
 	cudaEventCreate(&stop);
 	cudaEventRecord(stop, 0);
@@ -44,8 +46,26 @@ int main() {
 	float elapsedTime;
 	cudaEventElapsedTime(&elapsedTime, start, stop);
 	cout << "Time to generate random numbers: " << elapsedTime << " ms" << endl;
+
+	//print out both matrices
+	cout << "A:" << endl;
+	cudaMemcpy(A, d_A, bytes, cudaMemcpyDeviceToHost);
+	for (int i = 0; i < N; i++) {
+		for (int j = 0; j < N; j++) {
+			cout << A[j * N + i] << " ";
+		}
+		cout << endl;
+	}
+	cout << "B:" << endl;
+	cudaMemcpy(B, d_B, bytes, cudaMemcpyDeviceToHost);
+	for (int i = 0; i < N; i++) {
+		for (int j = 0; j < N; j++) {
+			cout << B[j * N + i] << " ";
+		}
+		cout << endl;
+	}
 	
-	cudaEventCreate(&start);
+	/*cudaEventCreate(&start);
 	cudaEventRecord(start, 0);
 	
 	cublasHandle_t handle;
@@ -72,7 +92,7 @@ int main() {
 	cudaEventRecord(stop, 0);
 	cudaEventSynchronize(stop);
 	cudaEventElapsedTime(&elapsedTime, start, stop);
-	cout << "Time to verify solution: " << elapsedTime << " ms" << endl;
+	cout << "Time to verify solution: " << elapsedTime << " ms" << endl;*/
 	
 	cudaFree(d_A);
 	cudaFree(d_B);
