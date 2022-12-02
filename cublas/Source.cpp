@@ -10,6 +10,21 @@ using std::chrono::high_resolution_clock;
 using std::chrono::duration_cast;
 using std::chrono::nanoseconds;
 
+const float ONE = 1.0f;
+const float ZERO = 0.0f;
+
+void MatMulMat(cublasHandle_t handle, int a, int b, int c, float* A, float* B, float* C) {
+	cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, c, a, b, &ONE, B, c, A, b, &ZERO, C, c);
+}
+
+void MatTMulMat(cublasHandle_t handle, int a, int b, int c, float* A, float* B, float* C) {
+	cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, c, a, b, &ONE, B, c, A, a, &ZERO, C, c);
+}
+
+void MatMulMatT(cublasHandle_t handle, int a, int b, int c, float* A, float* B, float* C) {
+	cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, c, a, b, &ONE, B, b, A, b, &ZERO, C, c);
+}
+
 int main() {
 	curandGenerator_t randomGenerator;
 	curandCreateGenerator(&randomGenerator, CURAND_RNG_PSEUDO_DEFAULT);
@@ -23,8 +38,6 @@ int main() {
 	cudaEventCreate(&start);
 	cudaEventCreate(&stop);
 	
-	const float ONE = 1.0f;
-	const float ZERO = 0.0f;
 	const int numIterations = 100;
 	
 	int batchSize = 1 << 9;
@@ -51,7 +64,9 @@ int main() {
 	int iterations = numIterations;
 	cudaEventRecord(start, 0);
 	while (iterations--) {
-		cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, outputFeatures, batchSize, inputFeatures, &ONE, gpuWeightMatrix, outputFeatures, gpuInputMatrix, inputFeatures, &ZERO, gpuOutputMatrix, outputFeatures);
+		// ab x bc = ac
+		// abc, ABC
+		MatMulMat(handle, batchSize, inputFeatures, outputFeatures, gpuInputMatrix, gpuWeightMatrix, gpuOutputMatrix);
 	}
 	cudaEventRecord(stop, 0);
 	cudaEventSynchronize(stop);
@@ -89,7 +104,9 @@ int main() {
 	iterations = numIterations;
 	cudaEventRecord(start, 0);
 	while (iterations--) {
-		cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, outputFeatures, inputFeatures, batchSize, &ONE, gpuOutputMatrix, outputFeatures, gpuInputMatrix, inputFeatures, &ZERO, gpuWeightMatrix, outputFeatures);
+		// ba x ac = bc
+		// bac, ACB
+		MatTMulMat(handle, inputFeatures, batchSize, outputFeatures, gpuInputMatrix, gpuOutputMatrix, gpuWeightMatrix);
 	}
 	cudaEventRecord(stop, 0);
 	cudaEventSynchronize(stop);
@@ -127,7 +144,9 @@ int main() {
 	iterations = numIterations;
 	cudaEventRecord(start, 0);
 	while (iterations--) {
-		cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, inputFeatures, batchSize, outputFeatures, &ONE, gpuWeightMatrix, outputFeatures, gpuOutputMatrix, outputFeatures, &ZERO, gpuInputMatrix, inputFeatures);
+		// ac x cb = ab
+		// acb, CBA
+		MatMulMatT(handle, batchSize, outputFeatures, inputFeatures, gpuOutputMatrix, gpuWeightMatrix, gpuInputMatrix);
 	}
 	cudaEventRecord(stop, 0);
 	cudaEventSynchronize(stop);
@@ -155,8 +174,8 @@ int main() {
 	}
 	cout << "Average error: " << error / (batchSize * inputFeatures) << endl;
 	delete[] output;
-	
 
+	
 	
 	cudaFree(gpuInputMatrix);
 	cudaFree(gpuWeightMatrix);
