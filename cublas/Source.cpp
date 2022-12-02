@@ -39,10 +39,30 @@ int main() {
 	cudaEventCreate(&stop);
 	
 	const int numIterations = 100;
-	
+
+	/*int batchSize = 1 << 10;
+	int inputFeatures = 1 << 9;
+	int outputFeatures = 1 << 8;
+
+	int batchSize = 1 << 10;
+	int inputFeatures = 1 << 8;
+	int outputFeatures = 1 << 9;
+
+	int batchSize = 1 << 8;
+	int inputFeatures = 1 << 10;
+	int outputFeatures = 1 << 9;
+
+	int batchSize = 1 << 8;
+	int inputFeatures = 1 << 9;
+	int outputFeatures = 1 << 10;
+
+	int batchSize = 1 << 9;
+	int inputFeatures = 1 << 8;
+	int outputFeatures = 1 << 10;*/
+
 	int batchSize = 1 << 9;
 	int inputFeatures = 1 << 10;
-	int outputFeatures = 1 << 8;
+	int outputFeatures = 1 << 8;/**/
 	
 	float* gpuInputMatrix, * gpuWeightMatrix, * gpuOutputMatrix;
 	cudaMallocManaged(&gpuInputMatrix, batchSize * inputFeatures * sizeof(float));
