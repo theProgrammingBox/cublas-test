@@ -11,9 +11,9 @@ using std::chrono::duration_cast;
 using std::chrono::nanoseconds;
 
 int main() {
-	curandGenerator_t gen;
-	curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
-	curandSetPseudoRandomGeneratorSeed(gen, duration_cast<nanoseconds>(high_resolution_clock::now().time_since_epoch()).count());
+	curandGenerator_t randomGenerator;
+	curandCreateGenerator(&randomGenerator, CURAND_RNG_PSEUDO_DEFAULT);
+	curandSetPseudoRandomGeneratorSeed(randomGenerator, duration_cast<nanoseconds>(high_resolution_clock::now().time_since_epoch()).count());
 	
 	cublasHandle_t handle;
 	cublasCreate(&handle);
@@ -23,150 +23,149 @@ int main() {
 	cudaEventCreate(&start);
 	cudaEventCreate(&stop);
 	
-	float alpha = 1.0f;
-	float beta = 0.0f;
-	int maxIterations = 100;
+	const float ONE = 1.0f;
+	const float ZERO = 0.0f;
+	const int numIterations = 100;
 	
-	int a = 500;
-	int b = 700;
-	int c = 300;
+	int batchSize = 1 << 9;
+	int inputFeatures = 1 << 10;
+	int outputFeatures = 1 << 8;
 	
-	float* A, * B, * C;
-	cudaMallocManaged(&A, a * b * sizeof(float));
-	cudaMallocManaged(&B, b * c * sizeof(float));
-	cudaMallocManaged(&C, a * c * sizeof(float));
+	float* gpuInputMatrix, * gpuWeightMatrix, * gpuOutputMatrix;
+	cudaMallocManaged(&gpuInputMatrix, batchSize * inputFeatures * sizeof(float));
+	cudaMallocManaged(&gpuWeightMatrix, inputFeatures * outputFeatures * sizeof(float));
+	cudaMallocManaged(&gpuOutputMatrix, batchSize * outputFeatures * sizeof(float));
 	
-	float* hC = new float[a * c];
-	float* hA = new float[a * b];
-	float* hB = new float[b * c];
+	float* cpuInputMatrix = new float[batchSize * inputFeatures];
+	float* cpuWeightMatrix = new float[inputFeatures * outputFeatures];
+	float* cpuOutputMatrix = new float[batchSize * outputFeatures];
+
+	float* output;
 	
 	
 
 	// matrix times matrix
-	curandGenerateUniform(gen, A, a * b);
-	curandGenerateUniform(gen, B, b * c);
+	curandGenerateUniform(randomGenerator, gpuInputMatrix, batchSize * inputFeatures);
+	curandGenerateUniform(randomGenerator, gpuWeightMatrix, inputFeatures * outputFeatures);
 
-	int iterations = maxIterations;
+	int iterations = numIterations;
 	cudaEventRecord(start, 0);
 	while (iterations--) {
-		cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, c, a, b, &alpha, B, c, A, b, &beta, C, c);
+		cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, outputFeatures, batchSize, inputFeatures, &ONE, gpuWeightMatrix, outputFeatures, gpuInputMatrix, inputFeatures, &ZERO, gpuOutputMatrix, outputFeatures);
 	}
 	cudaEventRecord(stop, 0);
 	cudaEventSynchronize(stop);
 	cudaEventElapsedTime(&elapsedTime, start, stop);
-	cout << "Time: " << elapsedTime / maxIterations << " ms" << endl;
+	cout << "Time: " << elapsedTime / numIterations << " ms" << endl;
 	
-	cudaMemcpy(hA, A, a * b * sizeof(float), cudaMemcpyDeviceToHost);
-	cudaMemcpy(hB, B, b * c * sizeof(float), cudaMemcpyDeviceToHost);
-	cudaMemcpy(hC, C, a * c * sizeof(float), cudaMemcpyDeviceToHost);
+	cudaMemcpy(cpuInputMatrix, gpuInputMatrix, batchSize * inputFeatures * sizeof(float), cudaMemcpyDeviceToHost);
+	cudaMemcpy(cpuWeightMatrix, gpuWeightMatrix, inputFeatures * outputFeatures * sizeof(float), cudaMemcpyDeviceToHost);
+	cudaMemcpy(cpuOutputMatrix, gpuOutputMatrix, batchSize * outputFeatures * sizeof(float), cudaMemcpyDeviceToHost);
 	
-	float* output = new float[a * c];
-	for (int i = 0; i < a; i++) {
-		for (int j = 0; j < c; j++) {
+	output = new float[batchSize * outputFeatures];
+	for (int i = 0; i < batchSize; i++) {
+		for (int j = 0; j < outputFeatures; j++) {
 			float sum = 0;
-			for (int k = 0; k < b; k++) {
-				sum += hA[i * b + k] * hB[k * c + j];
+			for (int k = 0; k < inputFeatures; k++) {
+				sum += cpuInputMatrix[i * inputFeatures + k] * cpuWeightMatrix[k * outputFeatures + j];
 			}
-			output[i * c + j] = sum;
+			output[i * outputFeatures + j] = sum;
 		}
 	}
 	
 	float error = 0;
-	for (int i = 0; i < a * c; i++) {
-		error += abs(hC[i] - output[i]);
+	for (int i = 0; i < batchSize * outputFeatures; i++) {
+		error += abs(cpuOutputMatrix[i] - output[i]);
 	}
-	cout << "Average error: " << error / (a * c) << endl;
-	
+	cout << "Average error: " << error / (batchSize * outputFeatures) << endl;
 	delete[] output;
 
 
 	
 	// transposed matrix times matrix
-	curandGenerateUniform(gen, C, a * c);
-	curandGenerateUniform(gen, A, a * b);
+	curandGenerateUniform(randomGenerator, gpuOutputMatrix, batchSize * outputFeatures);
+	curandGenerateUniform(randomGenerator, gpuInputMatrix, batchSize * inputFeatures);
 
-	iterations = maxIterations;
+	iterations = numIterations;
 	cudaEventRecord(start, 0);
 	while (iterations--) {
-		cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, c, b, a, &alpha, C, c, A, b, &beta, B, c);
+		cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, outputFeatures, inputFeatures, batchSize, &ONE, gpuOutputMatrix, outputFeatures, gpuInputMatrix, inputFeatures, &ZERO, gpuWeightMatrix, outputFeatures);
 	}
 	cudaEventRecord(stop, 0);
 	cudaEventSynchronize(stop);
 	cudaEventElapsedTime(&elapsedTime, start, stop);
-	cout << "Time: " << elapsedTime / maxIterations << " ms" << endl;
+	cout << "Time: " << elapsedTime / numIterations << " ms" << endl;
 	
-	cudaMemcpy(hA, A, a * b * sizeof(float), cudaMemcpyDeviceToHost);
-	cudaMemcpy(hB, B, b * c * sizeof(float), cudaMemcpyDeviceToHost);
-	cudaMemcpy(hC, C, a * c * sizeof(float), cudaMemcpyDeviceToHost);
+	cudaMemcpy(cpuInputMatrix, gpuInputMatrix, batchSize * inputFeatures * sizeof(float), cudaMemcpyDeviceToHost);
+	cudaMemcpy(cpuWeightMatrix, gpuWeightMatrix, inputFeatures * outputFeatures * sizeof(float), cudaMemcpyDeviceToHost);
+	cudaMemcpy(cpuOutputMatrix, gpuOutputMatrix, batchSize * outputFeatures * sizeof(float), cudaMemcpyDeviceToHost);
 	
-	output = new float[b * c];
-	for (int i = 0; i < b; i++) {
-		for (int j = 0; j < c; j++) {
+	output = new float[inputFeatures * outputFeatures];
+	for (int i = 0; i < inputFeatures; i++) {
+		for (int j = 0; j < outputFeatures; j++) {
 			float sum = 0;
-			for (int k = 0; k < a; k++) {
-				sum += hA[k * b + i] * hC[k * c + j];
+			for (int k = 0; k < batchSize; k++) {
+				sum += cpuInputMatrix[k * inputFeatures + i] * cpuOutputMatrix[k * outputFeatures + j];
 			}
-			output[i * c + j] = sum;
+			output[i * outputFeatures + j] = sum;
 		}
 	}
 	
 	error = 0;
-	for (int i = 0; i < b * c; i++) {
-		error += abs(hB[i] - output[i]);
+	for (int i = 0; i < inputFeatures * outputFeatures; i++) {
+		error += abs(cpuWeightMatrix[i] - output[i]);
 	}
-	cout << "Average error: " << error / (b * c) << endl;
-
+	cout << "Average error: " << error / (inputFeatures * outputFeatures) << endl;
 	delete[] output;
 
 	
 	
 	// matrix times transposed matrix
-	curandGenerateUniform(gen, C, a * c);
-	curandGenerateUniform(gen, B, b * c);
+	curandGenerateUniform(randomGenerator, gpuOutputMatrix, batchSize * outputFeatures);
+	curandGenerateUniform(randomGenerator, gpuWeightMatrix, inputFeatures * outputFeatures);
 	
-	iterations = maxIterations;
+	iterations = numIterations;
 	cudaEventRecord(start, 0);
 	while (iterations--) {
-		cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, b, a, c, &alpha, B, c, C, c, &beta, A, b);
+		cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, inputFeatures, batchSize, outputFeatures, &ONE, gpuWeightMatrix, outputFeatures, gpuOutputMatrix, outputFeatures, &ZERO, gpuInputMatrix, inputFeatures);
 	}
 	cudaEventRecord(stop, 0);
 	cudaEventSynchronize(stop);
 	cudaEventElapsedTime(&elapsedTime, start, stop);
-	cout << "Time: " << elapsedTime / maxIterations << " ms" << endl;
+	cout << "Time: " << elapsedTime / numIterations << " ms" << endl;
 	
-	cudaMemcpy(hA, A, a * b * sizeof(float), cudaMemcpyDeviceToHost);
-	cudaMemcpy(hB, B, b * c * sizeof(float), cudaMemcpyDeviceToHost);
-	cudaMemcpy(hC, C, a * c * sizeof(float), cudaMemcpyDeviceToHost);
+	cudaMemcpy(cpuInputMatrix, gpuInputMatrix, batchSize * inputFeatures * sizeof(float), cudaMemcpyDeviceToHost);
+	cudaMemcpy(cpuWeightMatrix, gpuWeightMatrix, inputFeatures * outputFeatures * sizeof(float), cudaMemcpyDeviceToHost);
+	cudaMemcpy(cpuOutputMatrix, gpuOutputMatrix, batchSize * outputFeatures * sizeof(float), cudaMemcpyDeviceToHost);
 	
-	output = new float[a * b];
-	for (int i = 0; i < a; i++) {
-		for (int j = 0; j < b; j++) {
+	output = new float[batchSize * inputFeatures];
+	for (int i = 0; i < batchSize; i++) {
+		for (int j = 0; j < inputFeatures; j++) {
 			float sum = 0;
-			for (int k = 0; k < c; k++) {
-				sum += hC[i * c + k] * hB[j * c + k];
+			for (int k = 0; k < outputFeatures; k++) {
+				sum += cpuOutputMatrix[i * outputFeatures + k] * cpuWeightMatrix[j * outputFeatures + k];
 			}
-			output[i * b + j] = sum;
+			output[i * inputFeatures + j] = sum;
 		}
 	}
 	
 	error = 0;
-	for (int i = 0; i < a * b; i++) {
-		error += abs(hA[i] - output[i]);
+	for (int i = 0; i < batchSize * inputFeatures; i++) {
+		error += abs(cpuInputMatrix[i] - output[i]);
 	}
-	cout << "Average error: " << error / (a * b) << endl;
-
+	cout << "Average error: " << error / (batchSize * inputFeatures) << endl;
 	delete[] output;
 	
 
 	
-	cudaFree(A);
-	cudaFree(B);
-	cudaFree(C);
-	delete[] hA;
-	delete[] hB;
-	delete[] hC;
+	cudaFree(gpuInputMatrix);
+	cudaFree(gpuWeightMatrix);
+	cudaFree(gpuOutputMatrix);
+	delete[] cpuInputMatrix;
+	delete[] cpuWeightMatrix;
+	delete[] cpuOutputMatrix;
 	
-	curandDestroyGenerator(gen);
+	curandDestroyGenerator(randomGenerator);
 	cublasDestroy(handle);
 	cudaEventDestroy(start);
 	cudaEventDestroy(stop);
