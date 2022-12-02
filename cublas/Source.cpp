@@ -27,9 +27,9 @@ int main() {
 	cublasCreate(&handle);
 
 	// initialize matrices
-	int a = 1 << 10;
-	int b = 1 << 10;
-	int c = 1 << 10;
+	int a = 1 << 12;
+	int b = 1 << 12;
+	int c = 1 << 12;
 	float* A, * B, * C;
 	cudaMallocManaged(&A, a * b * sizeof(float));
 	cudaMallocManaged(&B, b * c * sizeof(float));
