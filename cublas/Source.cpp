@@ -27,9 +27,9 @@ int main() {
 	cublasCreate(&handle);
 
 	// initialize matrices
-	int a = 1;
-	int b = 3;
-	int c = 4;
+	int a = 1 << 10;
+	int b = 1 << 10;
+	int c = 1 << 10;
 	float* A, * B, * C;
 	cudaMallocManaged(&A, a * b * sizeof(float));
 	cudaMallocManaged(&B, b * c * sizeof(float));
@@ -47,7 +47,10 @@ int main() {
 	
 	float alpha = 1.0f;
 	float beta = 0.0f;
-	cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, c, a, b, &alpha, B, c, A, b, &beta, C, c);
+	int iterations = 10;
+	while (iterations--) {
+		cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, c, a, b, &alpha, B, c, A, b, &beta, C, c);
+	}
 	
 	cudaEventCreate(&stop);
 	cudaEventRecord(stop, 0);
@@ -75,23 +78,14 @@ int main() {
 		}
 	}
 	
-	// print results
-	cout << "C:" << endl;
-	for (int i = 0; i < a; i++) {
-		for (int j = 0; j < c; j++) {
-			cout << hC[i * c + j] << " ";
-		}
-		cout << endl;
+	// print average error
+	float error = 0;
+	for (int i = 0; i < a * c; i++) {
+		error += abs(hC[i] - hC2[i]);
 	}
-	cout << "C2:" << endl;
-	for (int i = 0; i < a; i++) {
-		for (int j = 0; j < c; j++) {
-			cout << hC2[i * c + j] << " ";
-		}
-		cout << endl;
-	}
+	cout << "Average error: " << error / (a * c) << endl;
 
-	cout << "A:" << endl;
+	/*cout << "A:" << endl;
 	for (int i = 0; i < a; i++) {
 		for (int j = 0; j < b; j++) {
 			cout << hA[i * b + j] << " ";
@@ -104,7 +98,7 @@ int main() {
 			cout << hB[i * c + j] << " ";
 		}
 		cout << endl;
-	}
+	}*/
 
 	// free memory
 	cudaFree(A);
